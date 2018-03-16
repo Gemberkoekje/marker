@@ -10,24 +10,96 @@ import * as path from 'path'
 import * as fs from 'fs'
 
 import { ILogService } from "../log/interfaces";
-import { IProjectService, IProjectInfo } from "./interfaces";
+import { IProjectService, IProjectInfo, IProjectFolder, IProjectFile } from "./interfaces";
 
 
-interface ProjectData {
-  uid: number,
+interface ProjectFile{
+  id: string;
+  name: string;
   folder: string;
-  selected?: string;
-  files: {
+  modified: boolean;
+  source?: string;
+  hash?: {
+    file: number,
+    current: number
+  };
+};
+
+class ProjectFolder {
     id: string;
     name: string;
     folder: string;
-    modified: boolean;
-    source?: string;
-    hash?: {
-      file: number,
-      current: number
-    };
-  }[];
+    subfolders: ProjectFolder[];
+    files: ProjectFile[];
+
+    public findFile(id : string) :ProjectFile
+    {
+      let file = this.files.find(f => f.id === id);
+      if(file == null)
+      {
+        this.subfolders.forEach(sf => file = sf.findFile(id) ? sf.findFile(id) : file)
+      }
+      return file;
+    }
+    public findFileFromName(filename : string) :ProjectFile
+    {
+      let file = this.files.find(f => f.name.toLocaleLowerCase() === filename.toLocaleLowerCase());
+      if(file == null)
+      {
+        this.subfolders.forEach(sf => file = sf.findFileFromName(filename) ? sf.findFileFromName(filename) : file)
+      }
+      return file;
+    }
+    public hasModifiedFiles(): boolean
+    {
+      let changed = this.files.find(f => f.modified === true) != null;
+      this.subfolders.forEach(sf => changed = sf.hasModifiedFiles() ? sf.hasModifiedFiles() : changed)
+      return changed;
+    }
+    public hash(data: string): number {
+      let hash: number = 0, i : number, chr: number;
+      if (data.length === 0) return hash;
+      for (i = 0; i < data.length; i++) {
+        chr   = data.charCodeAt(i);
+        hash  = ((hash << 5) - hash) + chr;
+        hash |= 0;
+      }
+      return Math.abs(hash);
+    }
+
+    public saveAll()
+    {
+            this.files.forEach(file => {
+          if(file.source) {
+            let filePath = path.join(this.folder, file.name);  
+            let fd = fs.openSync(filePath, 'w');
+            if(!fd) {
+              throw new Error("could not open the project file");
+            }
+            fs.writeFileSync(fd, file.source, 'utf8');
+            fs.closeSync(fd);    
+            
+            file.modified = false;
+            if(file.hash) {
+              file.hash.file = file.hash.current;
+            } else {
+              let hash = this.hash(file.source);
+              file.hash = {
+                file: hash,
+                current: hash
+              }
+            }          
+          }        
+        });
+        this.subfolders.forEach(sf => sf.saveAll());
+    }
+};
+
+class ProjectData {
+  uid: number;
+  folder: string;
+  selected?: string;
+  projectfolder: ProjectFolder;
 };
 
 export class ProjectService extends IProjectService {
@@ -49,6 +121,28 @@ export class ProjectService extends IProjectService {
     return this._changed.asObservable();
   }
 
+  public MapFile(projectFile: ProjectFile):IProjectFile
+  {
+    return {
+      id: projectFile.id,
+      name: projectFile.name,
+      folder: projectFile.folder,
+      modified: projectFile.modified,
+      hash: projectFile.hash ? projectFile.hash: undefined
+    }
+  }
+
+  public MapSubfolder(projectFolder: ProjectFolder):IProjectFolder
+  {
+    return {
+      id: projectFolder.id,
+      name: projectFolder.name,
+      folder: projectFolder.folder,
+      subfolders: projectFolder.subfolders ? projectFolder.subfolders.map((sf) => this.MapSubfolder(sf)) : [],
+      files:  projectFolder.files ? projectFolder.files.map((f) => this.MapFile(f)) : []
+    }
+  }
+
   public getProjectInfo(): IProjectInfo {
     this.log.debug("getting the project info", "ProjectService.getProjectInfo");
     try {
@@ -58,15 +152,7 @@ export class ProjectService extends IProjectService {
           folder: this._data.folder,
           uid: this._data.uid,
           selected: this._data.selected,
-          files: this._data.files ? this._data.files.map((f) => {
-            return {
-              id: f.id,
-              name: f.name,
-              folder: f.folder,
-              modified: f.modified,
-              hash: f.hash ? f.hash: undefined
-            }
-          }) : []
+          projectfolder: this.MapSubfolder(this._data.projectfolder) 
         }
       }         
       return projectinfo;        
@@ -86,7 +172,7 @@ export class ProjectService extends IProjectService {
       if(this._data.selected === id) {
         return true;
       }
-      var selected = this._data.files.find(f => f.id === id);
+      var selected = this._data.projectfolder.findFile(id);
       if(selected == null) {
         return false;
       }
@@ -104,7 +190,7 @@ export class ProjectService extends IProjectService {
       if(!this._data) {
         throw new Error("no project loaded");
       }
-      let file = this._data.files.find(f => f.id === fileid);
+      let file = this._data.projectfolder.findFile(fileid);
       if(!file) {
         throw new Error("project file is unknown");
       }
@@ -124,7 +210,7 @@ export class ProjectService extends IProjectService {
       fs.closeSync(fd); 
       file.source = source;
 
-      let hash = this.hash(source);
+      let hash = this._data.projectfolder.hash(source);
       file.hash = {
         file: hash,
         current: hash,
@@ -145,17 +231,17 @@ export class ProjectService extends IProjectService {
       if(!this._data) {
         throw new Error("no project loaded");
       }
-      let file = this._data.files.find(f => f.id === fileid);
+      let file = this._data.projectfolder.findFile(fileid);
       if(!file) {
         throw new Error("project file is unknown");
       }
       file.source = source;      
       if(file.hash) {
-        file.hash.current = this.hash(source);
+        file.hash.current = this._data.projectfolder.hash(source);
       } else {
         file.hash = {
           file: 0,
-          current: this.hash(source)
+          current: this._data.projectfolder.hash(source)
         }
       }
       if(file.hash.file != file.hash.current) {
@@ -182,7 +268,7 @@ export class ProjectService extends IProjectService {
       if(!this._data) {
         throw new Error("no project loaded");
       }
-      let file = this._data.files.find(f => f.id === fileid);
+      let file = this._data.projectfolder.findFile(fileid);
       if(!file) {
         throw new Error("project file is unknown");
       }
@@ -201,7 +287,7 @@ export class ProjectService extends IProjectService {
       if(file.hash) {
         file.hash.file = file.hash.current;
       } else {
-        let hash = this.hash(file.source);
+        let hash = this._data.projectfolder.hash(file.source);
         file.hash = {
           file: hash,
           current: hash
@@ -217,6 +303,8 @@ export class ProjectService extends IProjectService {
     }
   }
 
+
+
   public saveAll() {
     this.log.debug("saving all files", "ProjectService.saveAll");
     try {
@@ -224,28 +312,7 @@ export class ProjectService extends IProjectService {
         throw new Error("no project loaded");
       }
       let hasModified = this.hasModifiedFiles();
-      this._data.files.forEach(file => {
-        if(file.source) {
-          let filePath = path.join(this._data.folder, file.name);  
-          let fd = fs.openSync(filePath, 'w');
-          if(!fd) {
-            throw new Error("could not open the project file");
-          }
-          fs.writeFileSync(fd, file.source, 'utf8');
-          fs.closeSync(fd);    
-          
-          file.modified = false;
-          if(file.hash) {
-            file.hash.file = file.hash.current;
-          } else {
-            let hash = this.hash(file.source);
-            file.hash = {
-              file: hash,
-              current: hash
-            }
-          }          
-        }        
-      });
+      this._data.projectfolder.saveAll();
       if(hasModified) {
         this._changed.next(true);
       }
@@ -266,13 +333,13 @@ export class ProjectService extends IProjectService {
       let filename = path.basename(filepath);
 
       let data: ProjectData = {
-        uid: this.hash("project://" + folder),
+        uid: this._data.projectfolder.hash("project://" + folder),
         folder: folder,
-        files: []
+        projectfolder: new ProjectFolder
       };
-      data = this.recursiveLoadFromFolder(folder, "", data);
+      data = this.recursiveLoadFromFolder(folder, "", data, data.projectfolder);
 
-      var selected = data.files.find(f => f.name.toLocaleLowerCase() === filename.toLocaleLowerCase());
+      var selected = data.projectfolder.findFileFromName(filename);
       if(selected != null) {
         data.selected = selected.id;
       }
@@ -285,7 +352,7 @@ export class ProjectService extends IProjectService {
     }
   }
 
-private recursiveLoadFromFolder(folder: string, basefolder: string, data: ProjectData): ProjectData {
+private recursiveLoadFromFolder(folder: string, basefolder: string, data: ProjectData, projectFolder: ProjectFolder): ProjectData {
   var files = fs.readdirSync(folder);
   files.forEach(file => {
     let fn = "";
@@ -298,13 +365,20 @@ private recursiveLoadFromFolder(folder: string, basefolder: string, data: Projec
     let isDirectory = fs.statSync(path.join(folder, file)).isDirectory();
     if(isDirectory)
     {
-      data = this.recursiveLoadFromFolder(path.join(folder,file), fn, data);     
+      let subfolder :ProjectFolder = new ProjectFolder();
+        subfolder.id = fn;
+        subfolder.name= fn;
+        subfolder.folder=basefolder;
+        subfolder.subfolders = [];
+        subfolder.files = [];
+      projectFolder.subfolders.push(subfolder);
+      data = this.recursiveLoadFromFolder(path.join(folder,file), fn, data, subfolder);     
     }
     let ext = path.extname(file).toLowerCase();
     if(ext === ".md") {
-      if(data.files.find(f => f.id === fn) == null)
+      if(projectFolder.files.find(f => f.id === fn) == null)
       {
-        data.files.push({
+        projectFolder.files.push({
           id: fn,
           name: fn,
           folder: basefolder,
@@ -323,12 +397,17 @@ private recursiveLoadFromFolder(folder: string, basefolder: string, data: Projec
         throw new Error("The folder could not be located");
       }
 
-      let data: ProjectData = {
-        uid: this.hash("project://" + folder),
-        folder: folder,
-        files: []
-      };
-      data = this.recursiveLoadFromFolder(folder,"", data);
+      let data: ProjectData = new ProjectData();
+        data.uid =  this.hash("project://" + folder),
+        data.folder = folder,
+        data.projectfolder = new ProjectFolder();
+        data.projectfolder.id = folder;
+        data.projectfolder.name= folder;
+        data.projectfolder.folder="";
+        data.projectfolder.subfolders = [];
+        data.projectfolder.files = [];
+     
+      data = this.recursiveLoadFromFolder(folder,"", data, data.projectfolder);
           
       this._data = data;
       this._changed.next(true);
@@ -409,9 +488,8 @@ private recursiveLoadFromFolder(folder: string, basefolder: string, data: Projec
       } 
 
       let projectChanged = false;
-      let projectfiles = this._data.files;
 
-      this._data = this.recursiveLoadFromFolder(folder, "", this._data);
+      this._data = this.recursiveLoadFromFolder(folder, "", this._data, this._data.projectfolder);
 
       if(projectChanged) {
         this._changed.next(false);
@@ -426,14 +504,14 @@ private recursiveLoadFromFolder(folder: string, basefolder: string, data: Projec
     if(!this._data) {
       return false;
     }
-    var modified = this._data.files.find(f => f.modified === true);
+    var modified = this._data.projectfolder.hasModifiedFiles();
     if(modified) {
       return true;
     }
     return false;
   } 
 
-  private hash(data: string): number {
+  public hash(data: string): number {
     let hash: number = 0, i : number, chr: number;
     if (data.length === 0) return hash;
     for (i = 0; i < data.length; i++) {

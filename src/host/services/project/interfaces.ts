@@ -1,20 +1,31 @@
 import { Observable } from "rxjs/Observable";
 
+export interface IProjectFile{
+  id: string;
+  name: string;
+  folder: string;
+  modified: boolean;
+  source?: string;
+  hash?: {
+    file: number,
+    current: number
+  };
+};
+
+export interface IProjectFolder {
+    id: string;
+    name: string;
+    folder: string;
+    subfolders: IProjectFolder[];
+    files: IProjectFile[];
+};
+
 export interface IProjectInfo {
   uid: number,
   folder: string;
-  selected?: string,
-  files: {
-    id: string;
-    name: string,
-    folder: string,
-    modified: boolean;
-    hash?: {
-      file: number,
-      current: number,
-    }
-  }[];
-}
+  selected?: string;
+  projectfolder: IProjectFolder;
+};
 
 export abstract class IProjectService {
   abstract get changed(): Observable<boolean>;
