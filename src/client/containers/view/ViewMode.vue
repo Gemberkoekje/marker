@@ -74,9 +74,9 @@ export default {
     },
     updateCurrentProject(pi) {      
       try {
-        if(pi.files) {  
+        if(pi.projectfolder.files) {  
           let files = [];
-          let pifiles = pi.files.sort((a,b)=> {
+          let pifiles = pi.projectfolder.files.sort((a,b)=> {
             return (a.folder.localeCompare(b.folder) * 1000000) + 
             a.name.localeCompare(b.name);
           });
@@ -138,8 +138,8 @@ export default {
           folder: pi.folder
         };
         let files = [];
-        if(pi.files) {
-          let pifiles = pi.files.sort((a,b)=> {
+        if(pi.projectfolder.files) {
+          let pifiles = pi.projectfolder.files.sort((a,b)=> {
             return (a.folder.localeCompare(b.folder) * 1000000) + 
             a.name.localeCompare(b.name);
 

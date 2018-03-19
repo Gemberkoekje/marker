@@ -214,14 +214,14 @@ export default {
   methods: {
     update() {      
       let pi = this.$project.getProjectInfo();
-      if(pi && pi.files && pi.files.length > 0) { 
+      if(pi && pi.projectfolder.files && pi.projectfolder.files.length > 0) { 
 
         let selected = null;
         if(pi.selected) {
-          selected = pi.files.find(f => f.id === pi.selected);
+          selected = pi.projectfolder.files.find(f => f.id === pi.selected);
         } 
-        if(!selected && pi.files.length > 0) {
-          selected = pi.files[0];          
+        if(!selected && pi.projectfolder.files.length > 0) {
+          selected = pi.projectfolder.files[0];          
         }    
         if(!selected) {
           this.$router.replace("/home");  
