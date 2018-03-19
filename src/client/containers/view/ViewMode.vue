@@ -1,13 +1,14 @@
 <template>
   <div class="view-wrapper">
     <div class="view-left is-hidden-mobile">
-      <div class="view-filelist is-unselectable">
+      <div class="view-filelist is-unselectable" style="overflow: auto">
+        
         <div v-for="file in files" :key="file.id"
           class="view-fileitem" 
           :class="{'is-selected': file === selected}"
           @click="onSelectFile(file.id)">
             <span class="icon" :class="{'has-text-info': file.modified}">
-              <i class="fa fa-file"></i>
+              <i :class="{'fa fa-file': !file.subdir, 'fa fa-folder': file.subdir}"></i>
             </span>
             <span class="filename" :class="{'has-text-info': file.modified}">
               {{file.name}}
@@ -20,6 +21,7 @@
     </div>    
   </div>
 </template>
+
 
 <script>
 import HtmlView from '../../components/html/HtmlView'
@@ -72,12 +74,11 @@ export default {
         }              
       }
     },
-    updateCurrentProject(pi) {      
-      try {
-        if(pi.projectfolder.files) {  
-          let files = [];
-          let pifiles = pi.projectfolder.files.sort((a,b)=> {
-            return (a.folder.localeCompare(b.folder) * 1000000) + 
+    addSubdir(subdir, files, depth)
+    {
+        if(subdir.files) {
+          let pifiles = subdir.files.sort((a,b)=> {
+            return 
             a.name.localeCompare(b.name);
           });
           pifiles.forEach(f => {
@@ -86,6 +87,8 @@ export default {
               name: f.name,
               folder: f.folder,
               modified: f.modified,
+              subdir: false,
+              depth: depth,
               data: {
                 hash: -1,
                 html: null
@@ -99,6 +102,31 @@ export default {
             }
             files.push(file);
           });
+        }
+        if(subdir.subfolders) {
+          subdir.subfolders.forEach(sf => {
+          let file = {
+              id: sf.id,
+              name: sf.name,
+              folder: sf.folder,
+              subdir: true,
+              depth: depth,
+              files: []
+            };
+            this.addSubdir(sf,file.files,depth + 1);
+            files.push(file);
+            
+            });
+        }
+    },
+    updateCurrentProject(pi) {      
+      try {
+        if(pi.projectfolder.files) {  
+          let files = [];
+        if(pi.projectfolder) {
+          this.addSubdir(pi.projectfolder, files,0);
+          alert(files);
+        }      
 
           let selected = null;
           if(pi.selected) {
@@ -138,25 +166,8 @@ export default {
           folder: pi.folder
         };
         let files = [];
-        if(pi.projectfolder.files) {
-          let pifiles = pi.projectfolder.files.sort((a,b)=> {
-            return (a.folder.localeCompare(b.folder) * 1000000) + 
-            a.name.localeCompare(b.name);
-
-          });
-          pifiles.forEach(f => {
-            let file = {
-              id: f.id,
-              name: f.name,
-              folder: f.folder,
-              modified: f.modified,
-              data: {
-                hash: -1,
-                html: null
-              }
-            };
-            files.push(file);
-          });
+        if(pi.projectfolder) {
+          this.addSubdir(pi.projectfolder, files,0);
         }      
 
         let selected = null;
@@ -207,7 +218,10 @@ export default {
     }
   },
   components: {
-    "htmlview": HtmlView
+    "htmlview": HtmlView,
+    "item": {
+      template: '#item-template'
+    }
   }
 }
 </script>

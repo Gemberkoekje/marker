@@ -16,6 +16,7 @@ import { IProjectService, IProjectInfo, IProjectFolder, IProjectFile } from "./i
 interface ProjectFile{
   id: string;
   name: string;
+  visiblename: string;
   folder: string;
   modified: boolean;
   source?: string;
@@ -28,6 +29,7 @@ interface ProjectFile{
 class ProjectFolder {
     id: string;
     name: string;
+    visiblename: string;
     folder: string;
     subfolders: ProjectFolder[];
     files: ProjectFile[];
@@ -125,7 +127,7 @@ export class ProjectService extends IProjectService {
   {
     return {
       id: projectFile.id,
-      name: projectFile.name,
+      name: projectFile.visiblename,
       folder: projectFile.folder,
       modified: projectFile.modified,
       hash: projectFile.hash ? projectFile.hash: undefined
@@ -136,7 +138,7 @@ export class ProjectService extends IProjectService {
   {
     return {
       id: projectFolder.id,
-      name: projectFolder.name,
+      name: projectFolder.visiblename,
       folder: projectFolder.folder,
       subfolders: projectFolder.subfolders ? projectFolder.subfolders.map((sf) => this.MapSubfolder(sf)) : [],
       files:  projectFolder.files ? projectFolder.files.map((f) => this.MapFile(f)) : []
@@ -368,6 +370,7 @@ private recursiveLoadFromFolder(folder: string, basefolder: string, data: Projec
       let subfolder :ProjectFolder = new ProjectFolder();
         subfolder.id = fn;
         subfolder.name= fn;
+        subfolder.visiblename= file;
         subfolder.folder=basefolder;
         subfolder.subfolders = [];
         subfolder.files = [];
@@ -380,6 +383,7 @@ private recursiveLoadFromFolder(folder: string, basefolder: string, data: Projec
       {
         projectFolder.files.push({
           id: fn,
+          visiblename: file,
           name: fn,
           folder: basefolder,
           modified: false    
